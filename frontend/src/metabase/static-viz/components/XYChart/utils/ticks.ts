@@ -14,6 +14,7 @@ import {
   ChartSettings,
   ContiniousDomain,
   Series,
+  TickDisplay,
   XAxisType,
   XValue,
 } from "metabase/static-viz/components/XYChart/types";
@@ -43,19 +44,20 @@ export const formatXTick = (
 };
 
 export const getXTickWidthLimit = (
-  settings: ChartSettings["x"],
+  axisType: XAxisType,
   actualMaxWidth: number,
+  xTickDisplay?: TickDisplay,
   bandwidth?: number,
 ) => {
-  if (settings.tick_display === "hide") {
+  if (xTickDisplay === "hide") {
     return 0;
   }
 
-  if (settings.type !== "ordinal" || !bandwidth) {
+  if (axisType !== "ordinal" || !bandwidth) {
     return Infinity;
   }
 
-  return settings.tick_display === "rotate-45"
+  return xTickDisplay === "rotate-45"
     ? Math.min(actualMaxWidth, MAX_ROTATED_TICK_WIDTH)
     : bandwidth;
 };
@@ -64,6 +66,7 @@ export const getXTicksDimensions = (
   series: Series[],
   settings: ChartSettings["x"],
   fontSize: number,
+  xTickDisplay?: TickDisplay,
 ) => {
   if (settings.tick_display === "hide") {
     return {
@@ -81,7 +84,7 @@ export const getXTicksDimensions = (
     })
     .reduce((a, b) => Math.max(a, b), 0);
 
-  if (settings.tick_display === "rotate-45") {
+  if (xTickDisplay === "rotate-45") {
     const rotatedSize = getRotatedXTickHeight(maxTextWidth);
 
     return {
@@ -98,17 +101,22 @@ export const getXTicksDimensions = (
   };
 };
 
+export const truncateXTickLabel = (
+  tickLabel: string,
+  truncateToWidth: number,
+  tickFontSize: number,
+) => {
+  return truncateToWidth != null
+    ? truncateText(tickLabel || "", truncateToWidth, tickFontSize)
+    : tickLabel;
+};
+
 export const getXTickProps = (
   { x, y, formattedValue, ...props }: TickRendererProps,
   tickFontSize: number,
   truncateToWidth: number,
   shouldRotate?: boolean,
 ): Omit<TickRendererProps, "formattedValue"> => {
-  const value =
-    truncateToWidth != null
-      ? truncateText(formattedValue || "", truncateToWidth, tickFontSize)
-      : formattedValue;
-
   const textBaseline = Math.floor(tickFontSize / 2);
   const transform = shouldRotate
     ? `rotate(-90, ${x} ${y}) translate(${textBaseline}, ${Math.floor(
@@ -118,7 +126,18 @@ export const getXTickProps = (
 
   const textAnchor = shouldRotate ? "end" : "middle";
 
-  return { x, y, ...props, transform, children: value, textAnchor };
+  return {
+    x,
+    y,
+    ...props,
+    transform,
+    children: truncateXTickLabel(
+      formattedValue ?? "",
+      truncateToWidth,
+      tickFontSize,
+    ),
+    textAnchor,
+  };
 };
 
 export const getDistinctXValuesCount = (series: Series[]) =>

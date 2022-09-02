@@ -34,26 +34,39 @@ import {
   sortSeries,
   getLegendColumns,
   calculateStackedItems,
+  truncateXTickLabel,
 } from "metabase/static-viz/components/XYChart/utils";
 import { GoalLine } from "metabase/static-viz/components/XYChart/GoalLine";
-import Values from "./Values";
+import {
+  getXAxisProps,
+  calculateChartSize,
+  getXValuesCount,
+  getXLabelOffset,
+} from "metabase/static-viz/components/LineAreaBarChart/utils/settings";
 import { measureText } from "metabase/static-viz/lib/text";
 
+import Values from "./Values";
+import { getTicks } from "@visx/scale";
+
 export interface XYChartProps {
-  width: number;
-  height: number;
   series: Series[];
   settings: ChartSettings;
   style: ChartStyle;
 }
 
 export const XYChart = ({
-  width,
-  height,
   series: originalSeries,
   settings,
   style,
 }: XYChartProps) => {
+  const minTickSize = style.axes.ticks.fontSize * 1.5;
+  const xValuesCount = getXValuesCount(originalSeries);
+  const { width, height } = calculateChartSize(
+    settings,
+    xValuesCount,
+    minTickSize,
+  );
+
   let series: HydratedSeries[] = sortSeries(originalSeries, settings.x.type);
 
   if (settings.stacking === "stack") {
@@ -67,10 +80,13 @@ export const XYChart = ({
     yDomains.left,
     yDomains.right,
   );
+  const { xTickDisplay, areXTicksRotated, areXTicksHidden, xTicksCount } =
+    getXAxisProps(settings, xValuesCount, minTickSize, width);
   const xTicksDimensions = getXTicksDimensions(
     series,
     settings.x,
     style.axes.ticks.fontSize,
+    xTickDisplay,
   );
 
   const yLabelOffsetLeft = yTickWidths.left + LABEL_PADDING;
@@ -91,7 +107,9 @@ export const XYChart = ({
     width,
     height,
   );
-  const VALUE_CHAR_SIZE = measureText("0", style.value?.fontSize as number);
+  const measureTextWithDefault = (text: string) =>
+    measureText(text, style.value.fontSize);
+  const VALUE_CHAR_SIZE = measureTextWithDefault("0");
   const valuesLeftOffset = getValuesLeftOffset(
     settings,
     series,
@@ -121,11 +139,13 @@ export const XYChart = ({
     Math.max(leftColumn.length, rightColumn.length) * style.legend.lineHeight;
 
   const xTickWidthLimit = getXTickWidthLimit(
-    settings.x,
+    settings.x.type,
     xTicksDimensions.maxTextWidth,
+    xTickDisplay,
     xScale.bandwidth,
   );
-  const xTicksCount = settings.x.type === "ordinal" ? Infinity : 4;
+
+  const tickValues = getTicks(xScale.scale, xTicksCount ?? 10);
 
   const labelProps: Partial<TextProps> = {
     fontWeight: style.axes.labels.fontWeight,
@@ -151,10 +171,6 @@ export const XYChart = ({
     stroke: style.value?.stroke,
     strokeWidth: style.value?.strokeWidth,
   };
-
-  const areXTicksRotated = settings.x.tick_display === "rotate-45";
-  const areXTicksHidden = settings.x.tick_display === "hide";
-  const xLabelOffset = areXTicksHidden ? -style.axes.ticks.fontSize : undefined;
 
   return (
     <svg width={width} height={height + legendHeight}>
@@ -215,18 +231,37 @@ export const XYChart = ({
 
         <AxisBottom
           scale={xScale.scale}
-          label={areXTicksRotated ? undefined : settings.labels.bottom}
+          label={settings.labels.bottom}
           top={yMin}
           left={xMin}
           numTicks={xTicksCount}
-          labelOffset={xLabelOffset}
+          labelOffset={getXLabelOffset(
+            xTickDisplay,
+            style.axes.ticks.fontSize,
+            Math.max(
+              ...tickValues.map(tickValue =>
+                measureTextWithDefault(
+                  truncateXTickLabel(
+                    formatXTick(
+                      tickValue.valueOf(),
+                      settings.x.type,
+                      settings.x.format,
+                    ),
+                    xTickWidthLimit,
+                    style.value.fontSize,
+                  ),
+                ),
+              ),
+            ),
+          )}
           stroke={style.axes.color}
           tickStroke={style.axes.color}
-          hideTicks={settings.x.tick_display === "hide"}
+          hideTicks={areXTicksHidden}
           labelProps={labelProps}
           tickFormat={value =>
             formatXTick(value.valueOf(), settings.x.type, settings.x.format)
           }
+          tickValues={tickValues}
           tickComponent={props =>
             areXTicksHidden ? null : (
               <Text

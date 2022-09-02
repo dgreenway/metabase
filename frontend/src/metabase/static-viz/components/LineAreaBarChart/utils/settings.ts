@@ -1,7 +1,7 @@
-import { assocIn } from "icepick";
-import { ChartSettings, Series } from "../../XYChart/types";
 import { getX } from "../../XYChart/utils";
 import { Size } from "../types";
+
+import type { ChartSettings, Series, TickDisplay } from "../../XYChart/types";
 
 const DEFAULT_SIZE = {
   width: 540,
@@ -43,36 +43,76 @@ export const getXValuesCount = (series: Series[]): number => {
   return items.size;
 };
 
+interface XAxisProps {
+  areXTicksRotated: boolean;
+  areXTicksHidden: boolean;
+  xTicksCount: number;
+  xTickDisplay?: TickDisplay;
+}
+
 // We want to adjust display settings based on chart data to achieve better-looking charts on smaller static images.
-export const adjustSettings = (
+export const getXAxisProps = (
   settings: ChartSettings,
   xValuesCount: number,
   minTickSize: number,
-  chartSize: Size,
-): ChartSettings => {
-  return handleCrowdedOrdinalXTicks(
-    settings,
-    xValuesCount,
-    minTickSize,
-    chartSize,
-  );
+  chartWidth: number,
+): XAxisProps => {
+  if (settings.x.type === "ordinal") {
+    const xTickDisplay = handleCrowdedOrdinalXTicks(
+      settings,
+      xValuesCount,
+      minTickSize,
+      chartWidth,
+    );
+    const areXTicksHidden = xTickDisplay === "hide";
+
+    return {
+      areXTicksRotated: xTickDisplay === "rotate-45",
+      areXTicksHidden,
+      // xLabelOffset: areXTicksHidden ? -style.axes.ticks.fontSize : undefined,
+      xTicksCount: Infinity,
+      xTickDisplay,
+    };
+  }
+
+  const xTickDisplay = settings.x.tick_display;
+  const areXTicksHidden = xTickDisplay === "hide";
+
+  return {
+    areXTicksRotated: false,
+    areXTicksHidden,
+    xTicksCount: 4,
+    xTickDisplay,
+  };
+};
+
+export const getXLabelOffset = (
+  xTickDisplay: TickDisplay | undefined,
+  tickFontSize: number,
+  maxTickValueWidth: number,
+): number | undefined => {
+  if (xTickDisplay === "hide") {
+    return -tickFontSize;
+  }
+
+  if (xTickDisplay === "rotate-45") {
+    return maxTickValueWidth;
+  }
 };
 
 const handleCrowdedOrdinalXTicks = (
   settings: ChartSettings,
   xValuesCount: number,
   minTickSize: number,
-  chartSize: Size,
-) => {
-  if (settings.x.type !== "ordinal") {
-    return settings;
+  chartWidth: number,
+): TickDisplay | undefined => {
+  if (minTickSize * xValuesCount > chartWidth) {
+    return "hide";
   }
 
-  if (minTickSize * xValuesCount > chartSize.width) {
-    return assocIn(settings, ["x", "tick_display"], "hide");
+  if (xValuesCount > 10) {
+    return "rotate-45";
   }
 
-  return xValuesCount > 10
-    ? assocIn(settings, ["x", "tick_display"], "rotate-45")
-    : settings;
+  return settings.x.tick_display;
 };
